@@ -25,6 +25,10 @@ type AirtableCreateRecordsResponse = {
   records: AirtableRecord[];
 };
 
+type AirtableDeleteRecordsResponse = {
+  records: Array<{ id: string; deleted: boolean }>;
+};
+
 type UploadAttachmentInput = {
   slug: string;
   filename: string;
@@ -105,6 +109,17 @@ async function listRecords(tableName: string): Promise<AirtableRecord[]> {
   } while (offset);
 
   return records;
+}
+
+async function deleteRecords(tableName: string, recordIds: string[]) {
+  for (let i = 0; i < recordIds.length; i += MAX_AIRTABLE_BATCH_SIZE) {
+    const params = new URLSearchParams();
+    recordIds.slice(i, i + MAX_AIRTABLE_BATCH_SIZE).forEach((id) => params.append("records[]", id));
+
+    await airtableRequest<AirtableDeleteRecordsResponse>(`/${tablePath(tableName)}?${params}`, {
+      method: "DELETE"
+    });
+  }
 }
 
 function firstString(fields: Record<string, unknown>, names: string[], fallback = "") {
@@ -443,6 +458,36 @@ export async function updateAlbumStatus(id: string, status: string) {
   });
 
   return { id, status: nextStatus };
+}
+
+export async function deleteAlbum(id: string) {
+  if (!isAirtableConfigured()) {
+    const index = mockAlbums.findIndex((item) => item.airtableId === id || item.id === id);
+    if (index === -1) throw new Error("Album not found");
+
+    const [deletedAlbum] = mockAlbums.splice(index, 1);
+    return { id: deletedAlbum.airtableId || deletedAlbum.id, deleted: true };
+  }
+
+  const albums = await getAlbums();
+  const album = albums.find((item) => item.airtableId === id || item.id === id);
+  if (!album?.airtableId) throw new Error("Album not found");
+
+  await deleteRecords(
+    tableNames.submissions,
+    album.submissions.map((submission) => submission.airtableId).filter((recordId): recordId is string => Boolean(recordId))
+  );
+  await deleteRecords(
+    tableNames.artReferences,
+    album.artReferences.map((reference) => reference.airtableId).filter((recordId): recordId is string => Boolean(recordId))
+  );
+  await deleteRecords(
+    tableNames.tracks,
+    album.tracks.map((track) => track.airtableId).filter((recordId): recordId is string => Boolean(recordId))
+  );
+  await deleteRecords(tableNames.albums, [album.airtableId]);
+
+  return { id: album.airtableId, deleted: true };
 }
 
 export async function submitAlbumBySlug(slug: string, input: SubmitAlbumInput) {

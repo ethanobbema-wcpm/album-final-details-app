@@ -1,4 +1,4 @@
-import { getAlbums, updateAlbumStatus } from "@/lib/airtable";
+import { deleteAlbum, getAlbums, updateAlbumStatus } from "@/lib/airtable";
 import { NextResponse } from "next/server";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -26,5 +26,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to update album" }, { status: 400 });
+  }
+}
+
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const result = await deleteAlbum(id);
+    return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to delete album" }, { status: 400 });
   }
 }

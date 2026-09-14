@@ -1,6 +1,6 @@
 "use client";
 
-import { Clipboard, Download, Loader2, Plus, RefreshCw } from "lucide-react";
+import { Clipboard, Download, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -16,6 +16,7 @@ export function AdminDashboard() {
   const [albums, setAlbums] = useState<Album[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [message, setMessage] = useState("");
+  const [deletingAlbumId, setDeletingAlbumId] = useState("");
 
   async function loadData() {
     setLoadState("loading");
@@ -46,6 +47,28 @@ export function AdminDashboard() {
     const link = `${appUrl.replace(/\/$/, "")}/submit/${album.privateSubmissionSlug}`;
     await navigator.clipboard.writeText(link);
     setMessage("Producer link copied.");
+  }
+
+  async function deleteSelectedAlbum(album: Album) {
+    const id = album.airtableId || album.id;
+    const confirmed = window.confirm(`Delete ${album.workingAlbumTitle}? This will also remove its tracks, submissions, and art references.`);
+    if (!confirmed) return;
+
+    setDeletingAlbumId(id);
+    setMessage("");
+
+    try {
+      const response = await fetch(`/api/albums/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to delete album");
+
+      setAlbums((current) => current.filter((item) => (item.airtableId || item.id) !== id));
+      setMessage("Album deleted.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to delete album");
+    } finally {
+      setDeletingAlbumId("");
+    }
   }
 
   return (
@@ -105,6 +128,14 @@ export function AdminDashboard() {
                 <a href={`/api/albums/${encodeURIComponent(id)}/export`} aria-label={`Download ${album.workingAlbumTitle} export`}>
                   <Download size={30} />
                 </a>
+                <button
+                  type="button"
+                  onClick={() => void deleteSelectedAlbum(album)}
+                  disabled={deletingAlbumId === id}
+                  aria-label={`Delete ${album.workingAlbumTitle}`}
+                >
+                  {deletingAlbumId === id ? <Loader2 className="spin" size={24} /> : <Trash2 size={30} />}
+                </button>
               </div>
             </article>
           );
