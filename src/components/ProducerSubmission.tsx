@@ -638,7 +638,7 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
 
   return (
     <main className="submissionShell">
-      <form className="submissionPanel" onSubmit={handleSubmit}>
+      <form className="submissionPanel" onSubmit={handleSubmit} noValidate>
         <audio
           className="hiddenAudioPlayer"
           ref={audioRef}
@@ -671,12 +671,16 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
           ) : null}
         </div>
 
-        {error ? <div className="notice warning">{error}</div> : null}
-
         <section className="submissionSection plainSection">
           <label className="horizontalField">
             <span>Final Album Title:</span>
-            <input value={finalAlbumTitle} onChange={(event) => setFinalAlbumTitle(event.target.value)} required autoFocus />
+            <input
+              value={finalAlbumTitle}
+              onChange={(event) => setFinalAlbumTitle(event.target.value)}
+              required
+              aria-invalid={error === "Final album title is required."}
+              autoFocus
+            />
           </label>
         </section>
 
@@ -836,6 +840,12 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
             </div>
           ) : null}
         </section>
+
+        {error ? (
+          <div className="notice warning submitNotice" role="alert">
+            {error}
+          </div>
+        ) : null}
 
         <footer className="submissionFooter">
           <button className="outlineButton" type="submit" disabled={saving}>

@@ -685,6 +685,15 @@ label {
   margin-top: 44px;
 }
 
+.submitNotice {
+  margin-top: 24px;
+  margin-bottom: 0;
+}
+
+.submitNotice + .submissionFooter {
+  margin-top: 14px;
+}
+
 .completePanel,
 .errorPanel {
   width: min(420px, 100%);

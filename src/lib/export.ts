@@ -41,11 +41,12 @@ export function albumToCsv(album: Album) {
     [],
     ["Art Inspiration / References", ""],
     ["Art Reference Count", sortedArtReferences.length],
-    ["Reference #", "File Name", "File URL", "Date Uploaded"],
+    ["Reference #", "File Name", "File URL", "Notes", "Date Uploaded"],
     ...sortedArtReferences.map((reference, index) => [
       index + 1,
       reference.fileName || "",
       artReferenceUrl(reference),
+      reference.captionOrNotes || "",
       reference.dateUploaded || ""
     ])
   ];
