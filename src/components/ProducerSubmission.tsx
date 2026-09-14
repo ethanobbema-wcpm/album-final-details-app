@@ -290,6 +290,7 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
 
   const submissionSlug = album?.privateSubmissionSlug || slug || "";
   const existingArtReferenceCount = album?.artReferences.length || 0;
+  const savedArtReferences = [...(album?.artReferences || [])].sort((a, b) => (a.dateUploaded || "").localeCompare(b.dateUploaded || ""));
 
   function updateTrack(id: string, update: Partial<EditableTrack>) {
     setTracks((current) => current.map((track) => (track.id === id ? { ...track, ...update } : track)));
@@ -837,6 +838,41 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
                   </button>
                 </div>
               ))}
+            </div>
+          ) : null}
+
+          {savedArtReferences.length ? (
+            <div className="savedReferenceGrid">
+              {savedArtReferences.map((reference, index) => {
+                const referenceUrl = reference.attachmentUrl || reference.fileUrl || "";
+                const referenceName = reference.fileName || `Reference ${index + 1}`;
+
+                return (
+                  <article className="savedReferenceItem" key={reference.airtableId || reference.id || `${referenceName}-${index}`}>
+                    {reference.attachmentUrl ? (
+                      <a className="savedReferencePreview" href={referenceUrl} target="_blank" rel="noreferrer">
+                        <img src={reference.attachmentUrl} alt={referenceName} />
+                      </a>
+                    ) : referenceUrl ? (
+                      <a className="savedReferencePreview filePreview" href={referenceUrl} target="_blank" rel="noreferrer">
+                        <ImagePlus size={24} />
+                        <span>Open File</span>
+                      </a>
+                    ) : (
+                      <div className="savedReferencePreview filePreview">
+                        <ImagePlus size={24} />
+                        <span>No File URL</span>
+                      </div>
+                    )}
+
+                    <div className="savedReferenceMeta">
+                      <span>Reference {index + 1}</span>
+                      <strong>{referenceName}</strong>
+                      {reference.captionOrNotes ? <p>{reference.captionOrNotes}</p> : <p>No notes added.</p>}
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           ) : null}
         </section>

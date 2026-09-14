@@ -681,6 +681,69 @@ label {
   background: rgba(255, 255, 255, 0.94);
 }
 
+.savedReferenceGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.savedReferenceItem {
+  display: grid;
+  gap: 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px;
+  background: #fff;
+}
+
+.savedReferencePreview {
+  display: grid;
+  min-height: 154px;
+  place-items: center;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--surface-soft);
+}
+
+.savedReferencePreview img {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1.35;
+  object-fit: cover;
+}
+
+.filePreview {
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.filePreview svg {
+  color: var(--focus);
+}
+
+.savedReferenceMeta {
+  display: grid;
+  gap: 4px;
+  font-size: var(--ui-text-size);
+}
+
+.savedReferenceMeta span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.savedReferenceMeta strong {
+  overflow-wrap: anywhere;
+}
+
+.savedReferenceMeta p {
+  margin-bottom: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
 .submissionFooter {
   margin-top: 44px;
 }
