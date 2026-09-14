@@ -14,7 +14,8 @@ import {
   X
 } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import type { FormEvent, KeyboardEvent, MouseEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Album, Track } from "@/lib/types";
 
 type ProducerSubmissionProps = {
@@ -31,10 +32,32 @@ type UploadCandidate = {
 
 type EditableTrack = Track & {
   audioPreviewUrl?: string;
+  durationSeconds?: number;
+  waveformPeaks?: number[];
 };
+
+type PlaybackState = {
+  trackId: string | null;
+  currentTime: number;
+  duration: number;
+};
+
+type AudioDetails = {
+  duration: string;
+  durationSeconds?: number;
+  waveformPeaks?: number[];
+};
+
+type WebAudioWindow = Window &
+  typeof globalThis & {
+    webkitAudioContext?: typeof AudioContext;
+  };
 
 const MAX_ART_FILE_BYTES = 4 * 1024 * 1024;
 const AUDIO_FILE_PATTERN = /\.(wav|aif|aiff|mp3|m4a|flac|ogg|caf|wma)$/i;
+const WAVEFORM_BAR_COUNT = 160;
+const MIN_WAVEFORM_BAR_HEIGHT = 8;
+const MAX_WAVEFORM_BAR_HEIGHT = 52;
 
 function reorderTracks(tracks: EditableTrack[], fromId: string, toId: string) {
   const fromIndex = tracks.findIndex((track) => track.id === fromId);
@@ -47,9 +70,32 @@ function reorderTracks(tracks: EditableTrack[], fromId: string, toId: string) {
   return next.map((track, index) => ({ ...track, currentTrackOrder: index + 1 }));
 }
 
-function waveformBars(track: Track) {
-  const seed = `${track.originalTrackTitle}${track.audioFileName || ""}`.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  return Array.from({ length: 120 }, (_, index) => 26 + ((seed + index * 19) % 34));
+function clamp(value: number, min = 0, max = 1) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function parseDuration(duration?: string) {
+  if (!duration) return 0;
+
+  const parts = duration.split(":").map((part) => Number(part));
+  if (!parts.length || parts.some((part) => Number.isNaN(part))) return 0;
+
+  return parts.reduce((seconds, part) => seconds * 60 + part, 0);
+}
+
+function fallbackWaveformPeaks() {
+  return Array.from({ length: WAVEFORM_BAR_COUNT }, (_, index) => {
+    const primary = Math.sin(index * 0.55) * 0.06;
+    const secondary = Math.sin(index * 0.17) * 0.04;
+    return clamp(0.36 + primary + secondary, 0.22, 0.52);
+  });
+}
+
+function waveformBars(track: EditableTrack) {
+  const peaks = track.waveformPeaks?.length ? track.waveformPeaks : fallbackWaveformPeaks();
+  const heightRange = MAX_WAVEFORM_BAR_HEIGHT - MIN_WAVEFORM_BAR_HEIGHT;
+
+  return peaks.map((peak) => Math.round(MIN_WAVEFORM_BAR_HEIGHT + clamp(peak) * heightRange));
 }
 
 function fileNameWithoutExtension(fileName: string) {
@@ -74,12 +120,12 @@ function formatDuration(seconds: number) {
   return `${minutes}:${remainingSeconds}`;
 }
 
-function readAudioDuration(previewUrl: string) {
-  return new Promise<string>((resolve) => {
+function readAudioMetadata(previewUrl: string) {
+  return new Promise<number>((resolve) => {
     const audio = document.createElement("audio");
-    const timer = window.setTimeout(() => settle(""), 4000);
+    const timer = window.setTimeout(() => settle(0), 4000);
 
-    const settle = (duration = "") => {
+    const settle = (duration = 0) => {
       window.clearTimeout(timer);
       audio.removeAttribute("src");
       audio.load();
@@ -87,10 +133,66 @@ function readAudioDuration(previewUrl: string) {
     };
 
     audio.preload = "metadata";
-    audio.onloadedmetadata = () => settle(formatDuration(audio.duration));
-    audio.onerror = () => settle("");
+    audio.onloadedmetadata = () => settle(Number.isFinite(audio.duration) ? audio.duration : 0);
+    audio.onerror = () => settle(0);
     audio.src = previewUrl;
   });
+}
+
+function buildWaveformPeaks(audioBuffer: AudioBuffer) {
+  const rawPeaks = Array.from({ length: WAVEFORM_BAR_COUNT }, (_, index) => {
+    const start = Math.floor((audioBuffer.length * index) / WAVEFORM_BAR_COUNT);
+    const end = Math.floor((audioBuffer.length * (index + 1)) / WAVEFORM_BAR_COUNT);
+    const sampleCount = Math.max(1, end - start);
+    const stride = Math.max(1, Math.floor(sampleCount / 120));
+    let peak = 0;
+
+    for (let channel = 0; channel < audioBuffer.numberOfChannels; channel += 1) {
+      const data = audioBuffer.getChannelData(channel);
+
+      for (let sampleIndex = start; sampleIndex < end; sampleIndex += stride) {
+        peak = Math.max(peak, Math.abs(data[sampleIndex] || 0));
+      }
+    }
+
+    return peak;
+  });
+
+  const maxPeak = Math.max(...rawPeaks, 0.01);
+  return rawPeaks.map((peak) => clamp(peak / maxPeak, 0.08, 1));
+}
+
+async function decodeAudioFile(file: File): Promise<Partial<AudioDetails>> {
+  const AudioContextConstructor = window.AudioContext || (window as WebAudioWindow).webkitAudioContext;
+  if (!AudioContextConstructor) return {};
+
+  let audioContext: AudioContext | undefined;
+
+  try {
+    audioContext = new AudioContextConstructor();
+    const audioBuffer = await audioContext.decodeAudioData(await file.arrayBuffer());
+    const durationSeconds = Number.isFinite(audioBuffer.duration) ? audioBuffer.duration : 0;
+
+    return {
+      durationSeconds: durationSeconds || undefined,
+      waveformPeaks: buildWaveformPeaks(audioBuffer)
+    };
+  } catch {
+    return {};
+  } finally {
+    void audioContext?.close();
+  }
+}
+
+async function readAudioDetails(file: File, previewUrl: string): Promise<AudioDetails> {
+  const [decodedDetails, metadataDuration] = await Promise.all([decodeAudioFile(file), readAudioMetadata(previewUrl)]);
+  const durationSeconds = decodedDetails.durationSeconds || metadataDuration || undefined;
+
+  return {
+    duration: durationSeconds ? formatDuration(durationSeconds) : "",
+    durationSeconds,
+    waveformPeaks: decodedDetails.waveformPeaks
+  };
 }
 
 function savedTracksForAlbum(album: Album) {
@@ -113,11 +215,13 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [playingTrackId, setPlayingTrackId] = useState<string | null>(null);
   const [activeAudioUrl, setActiveAudioUrl] = useState("");
+  const [playback, setPlayback] = useState<PlaybackState>({ trackId: null, currentTime: 0, duration: 0 });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [complete, setComplete] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const pendingSeekRef = useRef<{ trackId: string; time: number } | null>(null);
   const audioPreviewUrlsRef = useRef<string[]>([]);
   const artPreviewUrlsRef = useRef<string[]>([]);
 
@@ -142,6 +246,9 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
         setAlbum(data.album);
         setFinalAlbumTitle(data.album.finalAlbumTitle || "");
         setTracks(savedTracksForAlbum(data.album));
+        setPlayingTrackId(null);
+        setActiveAudioUrl("");
+        setPlayback({ trackId: null, currentTime: 0, duration: 0 });
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Unable to load album");
       } finally {
@@ -163,10 +270,12 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
     const audio = audioRef.current;
     if (!audio) return;
 
-    if (!activeAudioUrl) {
+    if (!activeAudioUrl || !playingTrackId) {
       audio.pause();
       audio.removeAttribute("src");
       audio.load();
+      pendingSeekRef.current = null;
+      setPlayback({ trackId: null, currentTime: 0, duration: 0 });
       return;
     }
 
@@ -177,13 +286,22 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
       setActiveAudioUrl("");
       setError("Audio playback could not start in this browser.");
     });
-  }, [activeAudioUrl]);
+  }, [activeAudioUrl, playingTrackId]);
 
   const submissionSlug = album?.privateSubmissionSlug || slug || "";
   const existingArtReferenceCount = album?.artReferences.length || 0;
 
   function updateTrack(id: string, update: Partial<EditableTrack>) {
     setTracks((current) => current.map((track) => (track.id === id ? { ...track, ...update } : track)));
+  }
+
+  function durationForTrack(track: EditableTrack) {
+    if (playback.trackId === track.id && playback.duration > 0) return playback.duration;
+    return track.durationSeconds || parseDuration(track.duration);
+  }
+
+  function currentTimeForTrack(track: EditableTrack) {
+    return playback.trackId === track.id ? playback.currentTime : 0;
   }
 
   function toggleTrackPlayback(track: EditableTrack) {
@@ -194,14 +312,108 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
     }
 
     if (playingTrackId === track.id) {
+      audioRef.current?.pause();
       setPlayingTrackId(null);
       setActiveAudioUrl("");
+      setPlayback({ trackId: null, currentTime: 0, duration: 0 });
       return;
     }
 
     setError("");
     setPlayingTrackId(track.id);
     setActiveAudioUrl(source);
+  }
+
+  function seekTrack(track: EditableTrack, time: number) {
+    const source = track.audioPreviewUrl || track.audioUrl;
+    if (!source) return;
+
+    const duration = durationForTrack(track);
+    const seekTime = duration ? clamp(time / duration) * duration : Math.max(0, time);
+    const audio = audioRef.current;
+
+    if (playingTrackId === track.id && audio && activeAudioUrl === source) {
+      audio.currentTime = seekTime;
+      setPlayback({ trackId: track.id, currentTime: seekTime, duration });
+      return;
+    }
+
+    pendingSeekRef.current = { trackId: track.id, time: seekTime };
+    setError("");
+    setPlayingTrackId(track.id);
+    setActiveAudioUrl(source);
+  }
+
+  function seekTrackFromPointer(event: MouseEvent<HTMLDivElement>, track: EditableTrack) {
+    const duration = durationForTrack(track);
+    if (!duration) {
+      toggleTrackPlayback(track);
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = clamp((event.clientX - rect.left) / rect.width);
+    seekTrack(track, duration * ratio);
+  }
+
+  function seekTrackFromKeyboard(event: KeyboardEvent<HTMLDivElement>, track: EditableTrack) {
+    const duration = durationForTrack(track);
+    if (!duration) return;
+
+    const currentTime = currentTimeForTrack(track);
+    const step = event.shiftKey ? 10 : 5;
+    let nextTime: number | null = null;
+
+    if (event.key === "ArrowLeft") nextTime = currentTime - step;
+    if (event.key === "ArrowRight") nextTime = currentTime + step;
+    if (event.key === "Home") nextTime = 0;
+    if (event.key === "End") nextTime = duration;
+
+    if (nextTime === null) return;
+
+    event.preventDefault();
+    seekTrack(track, clamp(nextTime / duration) * duration);
+  }
+
+  function handleAudioMetadata() {
+    const audio = audioRef.current;
+    if (!audio || !playingTrackId) return;
+
+    const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+    const pendingSeek = pendingSeekRef.current;
+
+    if (pendingSeek?.trackId === playingTrackId && duration > 0) {
+      audio.currentTime = Math.min(Math.max(pendingSeek.time, 0), duration);
+      pendingSeekRef.current = null;
+    }
+
+    const currentTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    setPlayback({ trackId: playingTrackId, currentTime, duration });
+
+    if (duration > 0) {
+      updateTrack(playingTrackId, {
+        duration: formatDuration(duration),
+        durationSeconds: duration
+      });
+    }
+  }
+
+  function handleAudioTimeUpdate() {
+    const audio = audioRef.current;
+    if (!audio || !playingTrackId) return;
+
+    const track = tracks.find((item) => item.id === playingTrackId);
+    const fallbackDuration = track ? durationForTrack(track) : 0;
+    const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : fallbackDuration;
+    const currentTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+
+    setPlayback({ trackId: playingTrackId, currentTime, duration });
+  }
+
+  function handleAudioEnded() {
+    setPlayingTrackId(null);
+    setActiveAudioUrl("");
+    setPlayback({ trackId: null, currentTime: 0, duration: 0 });
   }
 
   function moveTrack(id: string, direction: -1 | 1) {
@@ -232,6 +444,7 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
         const previewUrl = URL.createObjectURL(file);
         audioPreviewUrlsRef.current.push(previewUrl);
         const title = trackTitleFromFileName(file.name);
+        const audioDetails = await readAudioDetails(file, previewUrl);
 
         return {
           id: `local-audio-${Date.now()}-${index}`,
@@ -241,7 +454,9 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
           finalTrackTitle: title,
           audioFileName: file.name,
           audioPreviewUrl: previewUrl,
-          duration: await readAudioDuration(previewUrl)
+          duration: audioDetails.duration,
+          durationSeconds: audioDetails.durationSeconds,
+          waveformPeaks: audioDetails.waveformPeaks
         } satisfies EditableTrack;
       })
     );
@@ -427,10 +642,10 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
         <audio
           className="hiddenAudioPlayer"
           ref={audioRef}
-          onEnded={() => {
-            setPlayingTrackId(null);
-            setActiveAudioUrl("");
-          }}
+          onDurationChange={handleAudioMetadata}
+          onEnded={handleAudioEnded}
+          onLoadedMetadata={handleAudioMetadata}
+          onTimeUpdate={handleAudioTimeUpdate}
         />
 
         <header className="submissionHeader">
@@ -492,6 +707,10 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
             {tracks.map((track, index) => {
               const isPlaying = playingTrackId === track.id;
               const hasPlayableSource = Boolean(track.audioPreviewUrl || track.audioUrl);
+              const duration = durationForTrack(track);
+              const currentTime = currentTimeForTrack(track);
+              const playbackProgress = duration ? clamp(currentTime / duration) : 0;
+              const bars = waveformBars(track);
 
               return (
                 <article
@@ -532,14 +751,31 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
                       </label>
                     </div>
 
-                    <div className={`waveform ${isPlaying ? "playing" : ""}`} aria-hidden="true">
-                      {waveformBars(track).map((height, barIndex) => (
-                        <span className="waveBar" style={{ height: `${height}px` }} key={`${track.id}-${barIndex}`} />
+                    <div
+                      className={`waveform ${isPlaying ? "playing" : ""}`}
+                      role="slider"
+                      tabIndex={hasPlayableSource ? 0 : -1}
+                      aria-disabled={!hasPlayableSource}
+                      aria-label={`Seek in ${track.finalTrackTitle || track.originalTrackTitle}`}
+                      aria-valuemin={0}
+                      aria-valuemax={Math.round(duration)}
+                      aria-valuenow={Math.round(currentTime)}
+                      onClick={(event) => seekTrackFromPointer(event, track)}
+                      onKeyDown={(event) => seekTrackFromKeyboard(event, track)}
+                    >
+                      {bars.map((height, barIndex) => (
+                        <span
+                          className={`waveBar ${(barIndex + 0.5) / bars.length <= playbackProgress ? "played" : ""}`}
+                          style={{ height: `${height}px` }}
+                          key={`${track.id}-${barIndex}`}
+                        />
                       ))}
                     </div>
 
                     <div className="trackMetaLine">
-                      <span>0:00 / {track.duration || "0:00"}</span>
+                      <span>
+                        {formatDuration(currentTime) || "0:00"} / {duration ? formatDuration(duration) : "0:00"}
+                      </span>
                     </div>
                   </div>
 
