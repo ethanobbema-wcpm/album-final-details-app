@@ -211,6 +211,7 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
   const [album, setAlbum] = useState<Album | null>(null);
   const [tracks, setTracks] = useState<EditableTrack[]>([]);
   const [finalAlbumTitle, setFinalAlbumTitle] = useState("");
+  const [finalCatalog, setFinalCatalog] = useState("");
   const [uploads, setUploads] = useState<UploadCandidate[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [playingTrackId, setPlayingTrackId] = useState<string | null>(null);
@@ -245,6 +246,7 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
 
         setAlbum(data.album);
         setFinalAlbumTitle(data.album.finalAlbumTitle || "");
+        setFinalCatalog(data.album.finalCatalog || "");
         setTracks(savedTracksForAlbum(data.album));
         setPlayingTrackId(null);
         setActiveAudioUrl("");
@@ -575,6 +577,7 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           finalAlbumTitle: finalAlbumTitle.trim(),
+          finalCatalog: finalCatalog.trim(),
           artReferenceCount: uploadedCount,
           tracks: tracks.map((track, index) => ({
             id: track.id,
@@ -662,6 +665,9 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
           <p className="workingTitleLine">
             <strong>Working Album Title:</strong> {album.workingAlbumTitle}
           </p>
+          <p className="workingTitleLine">
+            <strong>Catalog:</strong> {album.catalog || "Pending"}
+          </p>
           {album.boxFolderUrl ? (
             <p className="workingTitleLine">
               <strong>Box Folder URL:</strong>{" "}
@@ -682,6 +688,10 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
               aria-invalid={error === "Final album title is required."}
               autoFocus
             />
+          </label>
+          <label className="horizontalField">
+            <span>Final Catalog (if changed):</span>
+            <input value={finalCatalog} onChange={(event) => setFinalCatalog(event.target.value)} placeholder={album.catalog || ""} />
           </label>
         </section>
 

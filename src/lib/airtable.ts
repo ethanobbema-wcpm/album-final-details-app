@@ -225,6 +225,7 @@ function mapSubmission(record: AirtableRecord): SubmissionSummary {
     albumRecordId: firstStringArray(fields, ["Album"])[0],
     producerRecordId: firstStringArray(fields, ["Producer"])[0],
     submittedFinalAlbumTitle: firstString(fields, ["Submitted Final Album Title"]),
+    submittedFinalCatalog: firstString(fields, ["Submitted Final Catalog"]),
     submittedTrackCount: firstNumber(fields, ["Submitted Track Count"]),
     artReferenceCount: firstNumber(fields, ["Art Reference Count"]),
     status: firstString(fields, ["Status"]),
@@ -233,6 +234,34 @@ function mapSubmission(record: AirtableRecord): SubmissionSummary {
     adminReviewNotes: firstString(fields, ["Admin Review Notes"]),
     tracklistJson: firstString(fields, ["Tracklist JSON"])
   };
+}
+
+function finalCatalogFromTracklistJson(tracklistJson?: string) {
+  if (!tracklistJson) return "";
+
+  try {
+    const payload = JSON.parse(tracklistJson) as unknown;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";
+
+    const metadata = (payload as { metadata?: unknown }).metadata;
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return "";
+
+    const finalCatalog = (metadata as { finalCatalog?: unknown }).finalCatalog;
+    return typeof finalCatalog === "string" ? finalCatalog : "";
+  } catch {
+    return "";
+  }
+}
+
+function finalCatalogFromSubmissions(submissions: SubmissionSummary[]) {
+  const sortedSubmissions = [...submissions].sort((a, b) => (b.submittedAt || "").localeCompare(a.submittedAt || ""));
+
+  for (const submission of sortedSubmissions) {
+    const finalCatalog = submission.submittedFinalCatalog || finalCatalogFromTracklistJson(submission.tracklistJson);
+    if (finalCatalog.trim()) return finalCatalog.trim();
+  }
+
+  return "";
 }
 
 function mapAlbum(
@@ -245,6 +274,7 @@ function mapAlbum(
   const fields = record.fields;
   const producerRecordId = firstStringArray(fields, ["Producer"])[0];
   const producer = producerRecordId ? producerById.get(producerRecordId) : undefined;
+  const submissions = submissionsByAlbum.get(record.id) || [];
 
   return {
     id: firstString(fields, ["Album ID"], record.id),
@@ -252,6 +282,7 @@ function mapAlbum(
     workingAlbumTitle: firstString(fields, ["Working Album Title"], "Untitled Album"),
     finalAlbumTitle: firstString(fields, ["Final Album Title"]),
     catalog: firstString(fields, ["Catalog"]),
+    finalCatalog: firstString(fields, ["Final Catalog"]) || finalCatalogFromSubmissions(submissions),
     producerRecordId,
     producerId: producer?.producerId || firstString(fields, ["Producer ID (from Producer)", "Producer ID (from Producer) (from Album)"]),
     producerName:
@@ -268,7 +299,7 @@ function mapAlbum(
     lastUpdated: firstString(fields, ["Last Updated"]),
     tracks: (tracksByAlbum.get(record.id) || []).sort((a, b) => a.currentTrackOrder - b.currentTrackOrder),
     artReferences: artByAlbum.get(record.id) || [],
-    submissions: submissionsByAlbum.get(record.id) || []
+    submissions
   };
 }
 
@@ -520,6 +551,7 @@ export async function submitAlbumBySlug(slug: string, input: SubmitAlbumInput) {
     const updatedAlbum: Album = {
       ...album,
       finalAlbumTitle: input.finalAlbumTitle,
+      finalCatalog: input.finalCatalog?.trim() || "",
       status: statusLabels.completed,
       dateSubmitted: todayIsoDate(),
       tracks: submittedTracks
@@ -590,12 +622,16 @@ export async function submitAlbumBySlug(slug: string, input: SubmitAlbumInput) {
   }
 
   const tracklistJson = JSON.stringify(
-    [...input.tracks]
-      .sort((a, b) => a.currentTrackOrder - b.currentTrackOrder)
-      .map((track) => ({
+    {
+      metadata: {
+        finalAlbumTitle: input.finalAlbumTitle,
+        finalCatalog: input.finalCatalog?.trim() || ""
+      },
+      tracks: [...input.tracks].sort((a, b) => a.currentTrackOrder - b.currentTrackOrder).map((track) => ({
         order: track.currentTrackOrder,
         title: track.finalTrackTitle
       }))
+    }
   );
 
   await airtableRequest<AirtableCreateRecordsResponse>(`/${tablePath(tableNames.submissions)}`, {

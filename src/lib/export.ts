@@ -23,6 +23,7 @@ export function albumToCsv(album: Album) {
     ["Working Album Title", album.workingAlbumTitle],
     ["Final Album Title", album.finalAlbumTitle || ""],
     ["Catalog", album.catalog || ""],
+    ["Final Catalog (if changed)", album.finalCatalog || ""],
     ["Producer", album.producerName || ""],
     ["Producer Email", album.producerEmail || ""],
     ["Status", album.status],
