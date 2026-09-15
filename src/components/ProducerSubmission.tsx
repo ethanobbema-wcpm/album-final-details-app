@@ -859,6 +859,7 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
             <span>Drag and Drop to Upload</span>
             <input type="file" accept="image/*" multiple onChange={(event) => addUploadFiles(event.target.files || [])} />
           </label>
+          <p className="uploadLimitNote">*Images must be under 4 MB each.</p>
 
           {uploads.length ? (
             <div className="uploadGrid">
