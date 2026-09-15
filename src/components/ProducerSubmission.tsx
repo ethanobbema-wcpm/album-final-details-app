@@ -9,6 +9,7 @@ import {
   Loader2,
   Pause,
   Play,
+  RotateCcw,
   Trash2,
   Upload,
   X
@@ -325,6 +326,25 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
     setError("");
     setPlayingTrackId(track.id);
     setActiveAudioUrl(source);
+  }
+
+  function resetTrackPlayback(track: EditableTrack) {
+    const duration = durationForTrack(track);
+    const audio = audioRef.current;
+
+    if (playingTrackId === track.id && audio) {
+      audio.currentTime = 0;
+      setPlayback({
+        trackId: track.id,
+        currentTime: 0,
+        duration: Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : duration
+      });
+      return;
+    }
+
+    if (!playingTrackId || playback.trackId === track.id) {
+      setPlayback({ trackId: track.id, currentTime: 0, duration });
+    }
   }
 
   function seekTrack(track: EditableTrack, time: number) {
@@ -743,15 +763,26 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
                     <GripVertical size={20} />
                   </div>
 
-                  <button
-                    className="wavePlay"
-                    type="button"
-                    onClick={() => toggleTrackPlayback(track)}
-                    disabled={!hasPlayableSource}
-                    aria-label={isPlaying ? `Pause ${track.originalTrackTitle}` : `Play ${track.originalTrackTitle}`}
-                  >
-                    {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
-                  </button>
+                  <div className="waveControls">
+                    <button
+                      className="wavePlay"
+                      type="button"
+                      onClick={() => toggleTrackPlayback(track)}
+                      disabled={!hasPlayableSource}
+                      aria-label={isPlaying ? `Pause ${track.originalTrackTitle}` : `Play ${track.originalTrackTitle}`}
+                    >
+                      {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+                    </button>
+                    <button
+                      className="waveReset"
+                      type="button"
+                      onClick={() => resetTrackPlayback(track)}
+                      disabled={!hasPlayableSource}
+                      aria-label={`Reset ${track.originalTrackTitle} to beginning`}
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                  </div>
 
                   <div className="waveTrackBody">
                     <div className="trackNameRow">

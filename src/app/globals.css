@@ -511,7 +511,14 @@ label {
   cursor: grab;
 }
 
-.wavePlay {
+.waveControls {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+}
+
+.wavePlay,
+.waveReset {
   display: inline-flex;
   width: 25px;
   height: 25px;
@@ -519,11 +526,25 @@ label {
   justify-content: center;
   border: 0;
   border-radius: 50%;
+}
+
+.wavePlay {
   background: var(--focus);
   color: #fff;
 }
 
-.wavePlay:disabled {
+.waveReset {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--line) inset;
+}
+
+.waveReset:hover {
+  color: var(--focus);
+}
+
+.wavePlay:disabled,
+.waveReset:disabled {
   cursor: default;
   opacity: 0.35;
 }
@@ -910,7 +931,7 @@ label {
     display: none;
   }
 
-  .wavePlay {
+  .waveControls {
     grid-column: 1;
   }
 
