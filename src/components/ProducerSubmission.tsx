@@ -38,7 +38,6 @@ type EditableTrack = Track & {
 };
 
 type PlaybackState = {
-  trackId: string | null;
   currentTime: number;
   duration: number;
 };
@@ -218,7 +217,7 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [playingTrackId, setPlayingTrackId] = useState<string | null>(null);
   const [activeAudioUrl, setActiveAudioUrl] = useState("");
-  const [playback, setPlayback] = useState<PlaybackState>({ trackId: null, currentTime: 0, duration: 0 });
+  const [playbackByTrack, setPlaybackByTrack] = useState<Record<string, PlaybackState>>({});
   const [audioUploadMessage, setAudioUploadMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -253,7 +252,7 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
         setTracks(savedTracksForAlbum(data.album));
         setPlayingTrackId(null);
         setActiveAudioUrl("");
-        setPlayback({ trackId: null, currentTime: 0, duration: 0 });
+        setPlaybackByTrack({});
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Unable to load album");
       } finally {
@@ -293,7 +292,6 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
       audio.removeAttribute("src");
       audio.load();
       pendingSeekRef.current = null;
-      setPlayback({ trackId: null, currentTime: 0, duration: 0 });
       return;
     }
 
@@ -315,12 +313,36 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
   }
 
   function durationForTrack(track: EditableTrack) {
-    if (playback.trackId === track.id && playback.duration > 0) return playback.duration;
+    const playback = playbackByTrack[track.id];
+    if (playback?.duration > 0) return playback.duration;
     return track.durationSeconds || parseDuration(track.duration);
   }
 
   function currentTimeForTrack(track: EditableTrack) {
-    return playback.trackId === track.id ? playback.currentTime : 0;
+    return playbackByTrack[track.id]?.currentTime || 0;
+  }
+
+  function savePlayback(trackId: string, currentTime: number, duration: number) {
+    setPlaybackByTrack((current) => ({
+      ...current,
+      [trackId]: { currentTime, duration }
+    }));
+  }
+
+  function saveActivePlayback() {
+    const audio = audioRef.current;
+    if (!audio || !playingTrackId) return;
+
+    const activeTrack = tracks.find((item) => item.id === playingTrackId);
+    savePlayback(
+      playingTrackId,
+      Number.isFinite(audio.currentTime) ? audio.currentTime : 0,
+      Number.isFinite(audio.duration) && audio.duration > 0
+        ? audio.duration
+        : activeTrack
+          ? durationForTrack(activeTrack)
+          : 0
+    );
   }
 
   function toggleTrackPlayback(track: EditableTrack) {
@@ -331,13 +353,23 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
     }
 
     if (playingTrackId === track.id) {
-      audioRef.current?.pause();
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+        savePlayback(
+          track.id,
+          Number.isFinite(audio.currentTime) ? audio.currentTime : currentTimeForTrack(track),
+          Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : durationForTrack(track)
+        );
+      }
       setPlayingTrackId(null);
       setActiveAudioUrl("");
-      setPlayback({ trackId: null, currentTime: 0, duration: 0 });
       return;
     }
 
+    saveActivePlayback();
+
+    pendingSeekRef.current = { trackId: track.id, time: currentTimeForTrack(track) };
     setError("");
     setPlayingTrackId(track.id);
     setActiveAudioUrl(source);
@@ -349,17 +381,11 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
 
     if (playingTrackId === track.id && audio) {
       audio.currentTime = 0;
-      setPlayback({
-        trackId: track.id,
-        currentTime: 0,
-        duration: Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : duration
-      });
+      savePlayback(track.id, 0, Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : duration);
       return;
     }
 
-    if (!playingTrackId || playback.trackId === track.id) {
-      setPlayback({ trackId: track.id, currentTime: 0, duration });
-    }
+    savePlayback(track.id, 0, duration);
   }
 
   function seekTrack(track: EditableTrack, time: number) {
@@ -372,10 +398,11 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
 
     if (playingTrackId === track.id && audio && activeAudioUrl === source) {
       audio.currentTime = seekTime;
-      setPlayback({ trackId: track.id, currentTime: seekTime, duration });
+      savePlayback(track.id, seekTime, duration);
       return;
     }
 
+    saveActivePlayback();
     pendingSeekRef.current = { trackId: track.id, time: seekTime };
     setError("");
     setPlayingTrackId(track.id);
@@ -426,7 +453,7 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
     }
 
     const currentTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
-    setPlayback({ trackId: playingTrackId, currentTime, duration });
+    savePlayback(playingTrackId, currentTime, duration);
 
     if (duration > 0) {
       updateTrack(playingTrackId, {
@@ -445,13 +472,13 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
     const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : fallbackDuration;
     const currentTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
 
-    setPlayback({ trackId: playingTrackId, currentTime, duration });
+    savePlayback(playingTrackId, currentTime, duration);
   }
 
   function handleAudioEnded() {
+    saveActivePlayback();
     setPlayingTrackId(null);
     setActiveAudioUrl("");
-    setPlayback({ trackId: null, currentTime: 0, duration: 0 });
   }
 
   function moveTrack(id: string, direction: -1 | 1) {
@@ -536,6 +563,12 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
         setPlayingTrackId(null);
         setActiveAudioUrl("");
       }
+
+      setPlaybackByTrack((playback) => {
+        const next = { ...playback };
+        delete next[id];
+        return next;
+      });
 
       return current.filter((track) => track.id !== id).map((track, index) => ({ ...track, currentTrackOrder: index + 1 }));
     });
@@ -919,9 +952,11 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
               {uploads.map((upload, index) => (
                 <div className="uploadItem" key={upload.previewUrl}>
                   <img src={upload.previewUrl} alt="" />
-                  <input
+                  <textarea
+                    className="uploadNotes"
                     value={upload.caption}
                     placeholder="Notes"
+                    rows={5}
                     onChange={(event) =>
                       setUploads((current) =>
                         current.map((item, itemIndex) => (itemIndex === index ? { ...item, caption: event.target.value } : item))

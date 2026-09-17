@@ -726,6 +726,13 @@ label {
   background: var(--surface-soft);
 }
 
+.uploadNotes {
+  width: 100%;
+  min-height: 112px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
 .uploadItem button {
   position: absolute;
   top: 10px;
