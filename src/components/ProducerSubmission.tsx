@@ -59,6 +59,7 @@ const AUDIO_FILE_PATTERN = /\.(wav|aif|aiff|mp3|m4a|flac|ogg|caf|wma)$/i;
 const WAVEFORM_BAR_COUNT = 160;
 const MIN_WAVEFORM_BAR_HEIGHT = 8;
 const MAX_WAVEFORM_BAR_HEIGHT = 52;
+const WAITING_FOR_AUDIO_FILES_MESSAGE = "Waiting for Finder / Box to provide the selected files...";
 
 function reorderTracks(tracks: EditableTrack[], fromId: string, toId: string) {
   const fromIndex = tracks.findIndex((track) => track.id === fromId);
@@ -218,6 +219,7 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
   const [playingTrackId, setPlayingTrackId] = useState<string | null>(null);
   const [activeAudioUrl, setActiveAudioUrl] = useState("");
   const [playback, setPlayback] = useState<PlaybackState>({ trackId: null, currentTime: 0, duration: 0 });
+  const [audioUploadMessage, setAudioUploadMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -268,6 +270,19 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
       artPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     };
   }, []);
+
+  useEffect(() => {
+    if (audioUploadMessage !== WAITING_FOR_AUDIO_FILES_MESSAGE) return;
+
+    function clearWaitingMessage() {
+      window.setTimeout(() => {
+        setAudioUploadMessage((current) => (current === WAITING_FOR_AUDIO_FILES_MESSAGE ? "" : current));
+      }, 2500);
+    }
+
+    window.addEventListener("focus", clearWaitingMessage);
+    return () => window.removeEventListener("focus", clearWaitingMessage);
+  }, [audioUploadMessage]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -452,24 +467,43 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
     });
   }
 
+  function beginAudioFileSelection() {
+    setError("");
+    setAudioUploadMessage(WAITING_FOR_AUDIO_FILES_MESSAGE);
+  }
+
+  function waitForPaint() {
+    return new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  }
+
   async function addAudioFiles(fileList: FileList | File[]) {
     const files = Array.from(fileList);
     const accepted = files.filter(isAudioFile);
 
     if (!accepted.length) {
       setError("Drop audio files to populate the track list.");
+      setAudioUploadMessage("");
       return;
     }
 
-    const startIndex = tracks.length;
-    const candidates = await Promise.all(
-      accepted.map(async (file, index) => {
+    setError("");
+
+    try {
+      const startIndex = tracks.length;
+      const candidates: EditableTrack[] = [];
+
+      for (const [index, file] of accepted.entries()) {
+        setAudioUploadMessage(`Preparing audio file ${index + 1} of ${accepted.length}...`);
+        await waitForPaint();
+
         const previewUrl = URL.createObjectURL(file);
         audioPreviewUrlsRef.current.push(previewUrl);
         const title = trackTitleFromFileName(file.name);
         const audioDetails = await readAudioDetails(file, previewUrl);
 
-        return {
+        candidates.push({
           id: `local-audio-${Date.now()}-${index}`,
           originalTrackNumber: startIndex + index + 1,
           currentTrackOrder: startIndex + index + 1,
@@ -480,12 +514,14 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
           duration: audioDetails.duration,
           durationSeconds: audioDetails.durationSeconds,
           waveformPeaks: audioDetails.waveformPeaks
-        } satisfies EditableTrack;
-      })
-    );
+        });
+      }
 
-    setTracks((current) => [...current, ...candidates].map((track, index) => ({ ...track, currentTrackOrder: index + 1 })));
-    setError(files.length === accepted.length ? "" : "Some files were skipped because they were not audio files.");
+      setTracks((current) => [...current, ...candidates].map((track, index) => ({ ...track, currentTrackOrder: index + 1 })));
+      setError(files.length === accepted.length ? "" : "Some files were skipped because they were not audio files.");
+    } finally {
+      setAudioUploadMessage("");
+    }
   }
 
   function removeTrack(id: string) {
@@ -719,20 +755,37 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
           <h2 className="largeFieldLabel">Audio files:</h2>
 
           <label
-            className="dropZone audioDropZone"
+            className={`dropZone audioDropZone ${audioUploadMessage ? "audioDropZoneLoading" : ""}`}
+            aria-busy={Boolean(audioUploadMessage)}
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => {
               event.preventDefault();
               void addAudioFiles(Array.from(event.dataTransfer.files));
             }}
           >
-            <Upload size={30} />
-            <span>Drag and Drop Audio Files</span>
+            {audioUploadMessage ? (
+              <div className="audioLoadingState" role="status" aria-live="polite">
+                <Loader2 className="spin" size={30} />
+                <span>{audioUploadMessage}</span>
+                <small>Large Box files may take a moment to become available.</small>
+              </div>
+            ) : (
+              <>
+                <Upload size={30} />
+                <span>Drag and Drop Audio Files</span>
+              </>
+            )}
             <input
               type="file"
               accept="audio/*,.wav,.aif,.aiff,.mp3,.m4a,.flac,.ogg,.caf,.wma"
               multiple
-              onChange={(event) => void addAudioFiles(event.target.files || [])}
+              onClick={beginAudioFileSelection}
+              onChange={(event) => {
+                const input = event.currentTarget;
+                void addAudioFiles(input.files || []).finally(() => {
+                  input.value = "";
+                });
+              }}
             />
           </label>
         </section>

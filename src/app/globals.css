@@ -653,6 +653,26 @@ label {
   min-height: 160px;
 }
 
+.audioDropZoneLoading {
+  background: #fafafa;
+  cursor: progress;
+}
+
+.audioLoadingState {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  color: var(--text);
+  text-align: center;
+}
+
+.audioLoadingState small {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 300;
+  line-height: 1.2;
+}
+
 .dropZone svg {
   color: var(--focus);
 }
