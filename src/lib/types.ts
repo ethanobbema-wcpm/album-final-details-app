@@ -64,6 +64,7 @@ export type Album = {
   dateSubmitted?: string;
   privateSubmissionSlug: string;
   adminNotes?: string;
+  submissionNotes?: string;
   downloadPackageUrl?: string;
   lastUpdated?: string;
   tracks: Track[];
@@ -78,6 +79,7 @@ export type SubmissionSummary = {
   producerRecordId?: string;
   submittedFinalAlbumTitle?: string;
   submittedFinalCatalog?: string;
+  submittedNotes?: string;
   submittedTrackCount?: number;
   artReferenceCount?: number;
   status?: SubmissionStatus;
@@ -121,6 +123,7 @@ export type CreateAlbumInput = {
 export type SubmitAlbumInput = {
   finalAlbumTitle: string;
   finalCatalog?: string;
+  notes?: string;
   tracks: Array<{
     id: string;
     airtableId?: string;

@@ -95,6 +95,7 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
   const [tracks, setTracks] = useState<EditableTrack[]>([]);
   const [finalAlbumTitle, setFinalAlbumTitle] = useState("");
   const [finalCatalog, setFinalCatalog] = useState("");
+  const [submissionNotes, setSubmissionNotes] = useState("");
   const [uploads, setUploads] = useState<UploadCandidate[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [playingTrackId, setPlayingTrackId] = useState<string | null>(null);
@@ -131,6 +132,7 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
         setAlbum(data.album);
         setFinalAlbumTitle(data.album.finalAlbumTitle || "");
         setFinalCatalog(data.album.finalCatalog || "");
+        setSubmissionNotes(data.album.submissionNotes || "");
         setTracks(savedTracksForAlbum(data.album));
         setPlayingTrackId(null);
         setActiveAudioUrl("");
@@ -550,6 +552,7 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
         body: JSON.stringify({
           finalAlbumTitle: finalAlbumTitle.trim(),
           finalCatalog: finalCatalog.trim(),
+          notes: submissionNotes.trim(),
           artReferenceCount: uploadedCount,
           tracks: tracks.map((track, index) => ({
             id: track.id,
@@ -899,6 +902,18 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
               })}
             </div>
           ) : null}
+        </section>
+
+        <section className="submissionSection plainSection submissionNotesSection">
+          <label>
+            <span className="largeFieldLabel">Notes (optional):</span>
+            <textarea
+              value={submissionNotes}
+              rows={3}
+              placeholder="Add any additional notes about the finalized album."
+              onChange={(event) => setSubmissionNotes(event.target.value)}
+            />
+          </label>
         </section>
 
         {error ? (

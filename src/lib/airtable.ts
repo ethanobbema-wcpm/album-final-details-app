@@ -235,6 +235,7 @@ function mapArtReference(record: AirtableRecord): ArtReference {
 
 function mapSubmission(record: AirtableRecord): SubmissionSummary {
   const fields = record.fields;
+  const tracklistJson = firstString(fields, ["Tracklist JSON"]);
   return {
     id: firstString(fields, ["Submission ID"], record.id),
     airtableId: record.id,
@@ -242,14 +243,30 @@ function mapSubmission(record: AirtableRecord): SubmissionSummary {
     producerRecordId: firstStringArray(fields, ["Producer"])[0],
     submittedFinalAlbumTitle: firstString(fields, ["Submitted Final Album Title"]),
     submittedFinalCatalog: firstString(fields, ["Submitted Final Catalog"]),
+    submittedNotes: submissionNotesFromTracklistJson(tracklistJson),
     submittedTrackCount: firstNumber(fields, ["Submitted Track Count"]),
     artReferenceCount: firstNumber(fields, ["Art Reference Count"]),
     status: firstString(fields, ["Status"]),
     submittedAt: firstString(fields, ["Submitted At"]),
     exportReady: firstBoolean(fields, ["Export Ready"]),
     adminReviewNotes: firstString(fields, ["Admin Review Notes"]),
-    tracklistJson: firstString(fields, ["Tracklist JSON"])
+    tracklistJson
   };
+}
+
+function submissionNotesFromTracklistJson(tracklistJson?: string) {
+  if (!tracklistJson) return "";
+
+  try {
+    const payload = JSON.parse(tracklistJson) as unknown;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";
+    const metadata = (payload as { metadata?: unknown }).metadata;
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return "";
+    const notes = (metadata as { notes?: unknown }).notes;
+    return typeof notes === "string" ? notes : "";
+  } catch {
+    return "";
+  }
 }
 
 function finalCatalogFromTracklistJson(tracklistJson?: string) {
@@ -277,6 +294,15 @@ function finalCatalogFromSubmissions(submissions: SubmissionSummary[]) {
     if (finalCatalog.trim()) return finalCatalog.trim();
   }
 
+  return "";
+}
+
+function submissionNotesFromSubmissions(submissions: SubmissionSummary[]) {
+  const sortedSubmissions = [...submissions].sort((a, b) => (b.submittedAt || "").localeCompare(a.submittedAt || ""));
+  for (const submission of sortedSubmissions) {
+    const notes = submission.submittedNotes || submissionNotesFromTracklistJson(submission.tracklistJson);
+    if (notes.trim()) return notes.trim();
+  }
   return "";
 }
 
@@ -311,6 +337,7 @@ function mapAlbum(
     dateSubmitted: firstString(fields, ["Date Submitted"]),
     privateSubmissionSlug: firstString(fields, ["Private Submission Slug"], record.id),
     adminNotes: firstString(fields, ["Admin Notes"]),
+    submissionNotes: submissionNotesFromSubmissions(submissions),
     downloadPackageUrl: firstString(fields, ["Download Package URL"]),
     lastUpdated: firstString(fields, ["Last Updated"]),
     tracks: (tracksByAlbum.get(record.id) || []).sort((a, b) => a.currentTrackOrder - b.currentTrackOrder),
@@ -591,6 +618,7 @@ export async function submitAlbumBySlug(slug: string, input: SubmitAlbumInput) {
       ...album,
       finalAlbumTitle: input.finalAlbumTitle,
       finalCatalog: input.finalCatalog?.trim() || "",
+      submissionNotes: input.notes?.trim() || "",
       status: statusLabels.completed,
       dateSubmitted: todayIsoDate(),
       tracks: submittedTracks
@@ -664,7 +692,8 @@ export async function submitAlbumBySlug(slug: string, input: SubmitAlbumInput) {
     {
       metadata: {
         finalAlbumTitle: input.finalAlbumTitle,
-        finalCatalog: input.finalCatalog?.trim() || ""
+        finalCatalog: input.finalCatalog?.trim() || "",
+        notes: input.notes?.trim() || ""
       },
       tracks: [...input.tracks].sort((a, b) => a.currentTrackOrder - b.currentTrackOrder).map((track) => ({
         order: track.currentTrackOrder,

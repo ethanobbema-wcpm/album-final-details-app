@@ -893,6 +893,19 @@ label {
   margin-bottom: 0;
 }
 
+.submissionNotesSection {
+  margin-top: 18px;
+}
+
+.submissionNotesSection label {
+  display: grid;
+  gap: 8px;
+}
+
+.submissionNotesSection textarea {
+  min-height: 92px;
+}
+
 .submitNotice + .submissionFooter {
   margin-top: 14px;
 }

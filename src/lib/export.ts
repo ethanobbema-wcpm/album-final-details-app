@@ -29,6 +29,7 @@ export function albumToCsv(album: Album) {
     ["Status", album.status],
     ["Date Submitted", album.dateSubmitted || ""],
     ["Box Folder URL", album.boxFolderUrl || ""],
+    ...(album.submissionNotes?.trim() ? [["Notes", album.submissionNotes.trim()]] : []),
     [],
     ["Final Track List", ""],
     ["Track Order", "Final Track Title", "Previous Track Title", "Uploaded Audio File Name", "Duration"],
