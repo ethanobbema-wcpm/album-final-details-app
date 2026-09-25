@@ -169,6 +169,18 @@ function toAttachmentUrl(fields: Record<string, unknown>, name: string) {
   return typeof first?.url === "string" ? first.url : undefined;
 }
 
+function waveformPeaksFromJson(value: string) {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return undefined;
+    const peaks = parsed.filter((item): item is number => typeof item === "number" && Number.isFinite(item));
+    return peaks.length ? peaks : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function mapProducer(record: AirtableRecord): Producer {
   const fields = record.fields;
   return {
@@ -196,8 +208,12 @@ function mapTrack(record: AirtableRecord): Track {
     originalTrackTitle: firstString(fields, ["Original Track Title"], "Untitled Track"),
     finalTrackTitle: firstString(fields, ["Final Track Title"]),
     audioFileName: firstString(fields, ["Audio File Name"]),
-    audioUrl: firstString(fields, ["Audio URL"]),
+    audioUrl: toAttachmentUrl(fields, "Audio Attachment") || firstString(fields, ["Audio URL"]),
     duration: firstString(fields, ["Duration"]),
+    durationSeconds: firstNumber(fields, ["Duration Seconds"]) || undefined,
+    waveformPeaks: waveformPeaksFromJson(firstString(fields, ["Waveform JSON"])),
+    audioFileSize: firstNumber(fields, ["Audio File Size"]) || undefined,
+    audioMimeType: firstString(fields, ["Audio MIME Type"]) || undefined,
     producerNotes: firstString(fields, ["Producer Notes"])
   };
 }
@@ -414,8 +430,12 @@ export async function createAlbum(input: CreateAlbumInput) {
         originalTrackTitle: track.originalTrackTitle,
         finalTrackTitle: "",
         audioFileName: track.audioFileName,
-        audioUrl: track.audioUrl,
-        duration: track.duration
+        audioUrl: track.audioAttachmentUrl || track.audioUrl,
+        duration: track.duration,
+        durationSeconds: track.durationSeconds,
+        waveformPeaks: track.waveformPeaks,
+        audioFileSize: track.audioFileSize,
+        audioMimeType: track.audioMimeType
       })),
       artReferences: [],
       submissions: []
@@ -455,20 +475,37 @@ export async function createAlbum(input: CreateAlbumInput) {
       "Original Track Title": track.originalTrackTitle,
       "Final Track Title": "",
       "Audio File Name": track.audioFileName || "",
-      "Audio URL": track.audioUrl || "",
-      Duration: track.duration || ""
+      ...(track.audioAttachmentUrl
+        ? { "Audio Attachment": [{ url: track.audioAttachmentUrl, filename: track.audioFileName || track.originalTrackTitle }] }
+        : {}),
+      ...(track.audioUrl ? { "Audio URL": track.audioUrl } : {}),
+      Duration: track.duration || "",
+      ...(track.durationSeconds ? { "Duration Seconds": track.durationSeconds } : {}),
+      ...(track.waveformPeaks?.length ? { "Waveform JSON": JSON.stringify(track.waveformPeaks) } : {}),
+      ...(track.audioFileSize ? { "Audio File Size": track.audioFileSize } : {}),
+      ...(track.audioMimeType ? { "Audio MIME Type": track.audioMimeType } : {})
     }
   }));
 
-  for (let i = 0; i < trackPayloads.length; i += MAX_AIRTABLE_BATCH_SIZE) {
-    await airtableRequest<AirtableCreateRecordsResponse>(`/${tablePath(tableNames.tracks)}`, {
-      method: "POST",
-      body: JSON.stringify({ records: trackPayloads.slice(i, i + MAX_AIRTABLE_BATCH_SIZE) })
-    });
+  const createdTrackRecordIds: string[] = [];
+  try {
+    for (let i = 0; i < trackPayloads.length; i += MAX_AIRTABLE_BATCH_SIZE) {
+      const createdTracks = await airtableRequest<AirtableCreateRecordsResponse>(`/${tablePath(tableNames.tracks)}`, {
+        method: "POST",
+        body: JSON.stringify({ records: trackPayloads.slice(i, i + MAX_AIRTABLE_BATCH_SIZE) })
+      });
+      createdTrackRecordIds.push(...createdTracks.records.map((record) => record.id));
+    }
+  } catch (error) {
+    await deleteRecords(tableNames.tracks, createdTrackRecordIds);
+    await deleteRecords(tableNames.albums, [albumRecord.id]);
+    throw error;
   }
 
   const albums = await getAlbums();
-  return albums.find((album) => album.airtableId === albumRecord.id) || getAlbumBySlug(String(albumRecord.fields["Private Submission Slug"]));
+  const createdAlbum = albums.find((album) => album.airtableId === albumRecord.id);
+  if (!createdAlbum) throw new Error("Album was created but could not be reloaded from Airtable");
+  return createdAlbum;
 }
 
 export async function updateAlbumStatus(id: string, status: string) {

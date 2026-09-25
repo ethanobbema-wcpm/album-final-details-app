@@ -28,6 +28,10 @@ export type Track = {
   audioFileName?: string;
   audioUrl?: string;
   duration?: string;
+  durationSeconds?: number;
+  waveformPeaks?: number[];
+  audioFileSize?: number;
+  audioMimeType?: string;
   producerNotes?: string;
 };
 
@@ -105,7 +109,12 @@ export type CreateAlbumInput = {
     originalTrackTitle: string;
     audioFileName?: string;
     audioUrl?: string;
+    audioAttachmentUrl?: string;
     duration?: string;
+    durationSeconds?: number;
+    waveformPeaks?: number[];
+    audioFileSize?: number;
+    audioMimeType?: string;
   }>;
 };
 

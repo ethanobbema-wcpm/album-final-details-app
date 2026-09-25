@@ -17,6 +17,14 @@ import {
 import Link from "next/link";
 import type { FormEvent, KeyboardEvent, MouseEvent } from "react";
 import { useEffect, useRef, useState } from "react";
+import {
+  AUDIO_FILE_ACCEPT,
+  formatDuration,
+  isAudioFile,
+  readAudioDetails,
+  trackTitleFromFileName,
+  waveformBars
+} from "@/lib/audio-client";
 import type { Album, Track } from "@/lib/types";
 
 type ProducerSubmissionProps = {
@@ -42,22 +50,7 @@ type PlaybackState = {
   duration: number;
 };
 
-type AudioDetails = {
-  duration: string;
-  durationSeconds?: number;
-  waveformPeaks?: number[];
-};
-
-type WebAudioWindow = Window &
-  typeof globalThis & {
-    webkitAudioContext?: typeof AudioContext;
-  };
-
 const MAX_ART_FILE_BYTES = 4 * 1024 * 1024;
-const AUDIO_FILE_PATTERN = /\.(wav|aif|aiff|mp3|m4a|flac|ogg|caf|wma)$/i;
-const WAVEFORM_BAR_COUNT = 160;
-const MIN_WAVEFORM_BAR_HEIGHT = 8;
-const MAX_WAVEFORM_BAR_HEIGHT = 52;
 const WAITING_FOR_AUDIO_FILES_MESSAGE = "Waiting for Finder / Box to provide the selected files...";
 
 function reorderTracks(tracks: EditableTrack[], fromId: string, toId: string) {
@@ -84,122 +77,11 @@ function parseDuration(duration?: string) {
   return parts.reduce((seconds, part) => seconds * 60 + part, 0);
 }
 
-function fallbackWaveformPeaks() {
-  return Array.from({ length: WAVEFORM_BAR_COUNT }, (_, index) => {
-    const primary = Math.sin(index * 0.55) * 0.06;
-    const secondary = Math.sin(index * 0.17) * 0.04;
-    return clamp(0.36 + primary + secondary, 0.22, 0.52);
-  });
-}
-
-function waveformBars(track: EditableTrack) {
-  const peaks = track.waveformPeaks?.length ? track.waveformPeaks : fallbackWaveformPeaks();
-  const heightRange = MAX_WAVEFORM_BAR_HEIGHT - MIN_WAVEFORM_BAR_HEIGHT;
-
-  return peaks.map((peak) => Math.round(MIN_WAVEFORM_BAR_HEIGHT + clamp(peak) * heightRange));
-}
-
-function fileNameWithoutExtension(fileName: string) {
-  return fileName.replace(/\.[^/.]+$/, "");
-}
-
-function trackTitleFromFileName(fileName: string) {
-  const base = fileNameWithoutExtension(fileName);
-  return base.replace(/^\d+[\s.)_-]+/, "").trim() || base;
-}
-
-function isAudioFile(file: File) {
-  return file.type.startsWith("audio/") || AUDIO_FILE_PATTERN.test(file.name);
-}
-
-function formatDuration(seconds: number) {
-  if (!Number.isFinite(seconds)) return "";
-
-  const totalSeconds = Math.max(0, Math.round(seconds));
-  const minutes = Math.floor(totalSeconds / 60);
-  const remainingSeconds = String(totalSeconds % 60).padStart(2, "0");
-  return `${minutes}:${remainingSeconds}`;
-}
-
-function readAudioMetadata(previewUrl: string) {
-  return new Promise<number>((resolve) => {
-    const audio = document.createElement("audio");
-    const timer = window.setTimeout(() => settle(0), 4000);
-
-    const settle = (duration = 0) => {
-      window.clearTimeout(timer);
-      audio.removeAttribute("src");
-      audio.load();
-      resolve(duration);
-    };
-
-    audio.preload = "metadata";
-    audio.onloadedmetadata = () => settle(Number.isFinite(audio.duration) ? audio.duration : 0);
-    audio.onerror = () => settle(0);
-    audio.src = previewUrl;
-  });
-}
-
-function buildWaveformPeaks(audioBuffer: AudioBuffer) {
-  const rawPeaks = Array.from({ length: WAVEFORM_BAR_COUNT }, (_, index) => {
-    const start = Math.floor((audioBuffer.length * index) / WAVEFORM_BAR_COUNT);
-    const end = Math.floor((audioBuffer.length * (index + 1)) / WAVEFORM_BAR_COUNT);
-    const sampleCount = Math.max(1, end - start);
-    const stride = Math.max(1, Math.floor(sampleCount / 120));
-    let peak = 0;
-
-    for (let channel = 0; channel < audioBuffer.numberOfChannels; channel += 1) {
-      const data = audioBuffer.getChannelData(channel);
-
-      for (let sampleIndex = start; sampleIndex < end; sampleIndex += stride) {
-        peak = Math.max(peak, Math.abs(data[sampleIndex] || 0));
-      }
-    }
-
-    return peak;
-  });
-
-  const maxPeak = Math.max(...rawPeaks, 0.01);
-  return rawPeaks.map((peak) => clamp(peak / maxPeak, 0.08, 1));
-}
-
-async function decodeAudioFile(file: File): Promise<Partial<AudioDetails>> {
-  const AudioContextConstructor = window.AudioContext || (window as WebAudioWindow).webkitAudioContext;
-  if (!AudioContextConstructor) return {};
-
-  let audioContext: AudioContext | undefined;
-
-  try {
-    audioContext = new AudioContextConstructor();
-    const audioBuffer = await audioContext.decodeAudioData(await file.arrayBuffer());
-    const durationSeconds = Number.isFinite(audioBuffer.duration) ? audioBuffer.duration : 0;
-
-    return {
-      durationSeconds: durationSeconds || undefined,
-      waveformPeaks: buildWaveformPeaks(audioBuffer)
-    };
-  } catch {
-    return {};
-  } finally {
-    void audioContext?.close();
-  }
-}
-
-async function readAudioDetails(file: File, previewUrl: string): Promise<AudioDetails> {
-  const [decodedDetails, metadataDuration] = await Promise.all([decodeAudioFile(file), readAudioMetadata(previewUrl)]);
-  const durationSeconds = decodedDetails.durationSeconds || metadataDuration || undefined;
-
-  return {
-    duration: durationSeconds ? formatDuration(durationSeconds) : "",
-    durationSeconds,
-    waveformPeaks: decodedDetails.waveformPeaks
-  };
-}
-
 function savedTracksForAlbum(album: Album) {
-  if (album.status !== "Completed") return [];
+  const availableTracks = album.status === "Completed" ? album.tracks : album.tracks.filter((track) => Boolean(track.audioUrl));
+  if (!availableTracks.length) return [];
 
-  return [...album.tracks]
+  return [...availableTracks]
     .sort((a: Track, b: Track) => a.currentTrackOrder - b.currentTrackOrder)
     .map((track: Track, index: number) => ({
       ...track,
@@ -306,6 +188,7 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
 
   const submissionSlug = album?.privateSubmissionSlug || slug || "";
   const existingArtReferenceCount = album?.artReferences.length || 0;
+  const albumHasStoredAudio = Boolean(album?.tracks.some((track) => track.audioUrl));
   const savedArtReferences = [...(album?.artReferences || [])].sort((a, b) => (a.dateUploaded || "").localeCompare(b.dateUploaded || ""));
 
   function updateTrack(id: string, update: Partial<EditableTrack>) {
@@ -790,54 +673,57 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
           </label>
         </section>
 
-        <section className="submissionSection plainSection">
-          <h2 className="largeFieldLabel">Audio files:</h2>
+        {!albumHasStoredAudio ? (
+          <section className="submissionSection plainSection">
+            <h2 className="largeFieldLabel">Audio files:</h2>
 
-          <label
-            className={`dropZone audioDropZone ${audioUploadMessage ? "audioDropZoneLoading" : ""}`}
-            aria-busy={Boolean(audioUploadMessage)}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              event.preventDefault();
-              void addAudioFiles(Array.from(event.dataTransfer.files));
-            }}
-          >
-            {audioUploadMessage ? (
-              <div className="audioLoadingState" role="status" aria-live="polite">
-                <Loader2 className="spin" size={30} />
-                <span>{audioUploadMessage}</span>
-                <small>Large Box files may take a moment to become available.</small>
-              </div>
-            ) : (
-              <>
-                <Upload size={30} />
-                <span>Drag and Drop Audio Files</span>
-              </>
-            )}
-            <input
-              type="file"
-              accept="audio/*,.wav,.aif,.aiff,.mp3,.m4a,.flac,.ogg,.caf,.wma"
-              multiple
-              onClick={beginAudioFileSelection}
-              onChange={(event) => {
-                const input = event.currentTarget;
-                void addAudioFiles(input.files || []).finally(() => {
-                  input.value = "";
-                });
+            <label
+              className={`dropZone audioDropZone ${audioUploadMessage ? "audioDropZoneLoading" : ""}`}
+              aria-busy={Boolean(audioUploadMessage)}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                void addAudioFiles(Array.from(event.dataTransfer.files));
               }}
-            />
-          </label>
-        </section>
+            >
+              {audioUploadMessage ? (
+                <div className="audioLoadingState" role="status" aria-live="polite">
+                  <Loader2 className="spin" size={30} />
+                  <span>{audioUploadMessage}</span>
+                  <small>Large Box files may take a moment to become available.</small>
+                </div>
+              ) : (
+                <>
+                  <Upload size={30} />
+                  <span>Drag and Drop Audio Files</span>
+                </>
+              )}
+              <input
+                type="file"
+                accept={AUDIO_FILE_ACCEPT}
+                multiple
+                onClick={beginAudioFileSelection}
+                onChange={(event) => {
+                  const input = event.currentTarget;
+                  void addAudioFiles(input.files || []).finally(() => {
+                    input.value = "";
+                  });
+                }}
+              />
+            </label>
+          </section>
+        ) : null}
 
         <section className="submissionSection plainSection">
           <div className="sortableList">
             {tracks.map((track, index) => {
               const isPlaying = playingTrackId === track.id;
               const hasPlayableSource = Boolean(track.audioPreviewUrl || track.audioUrl);
+              const isStoredTrack = Boolean(track.audioUrl && !track.audioPreviewUrl);
               const duration = durationForTrack(track);
               const currentTime = currentTimeForTrack(track);
               const playbackProgress = duration ? clamp(currentTime / duration) : 0;
-              const bars = waveformBars(track);
+              const bars = waveformBars(track.waveformPeaks);
 
               return (
                 <article
@@ -924,9 +810,11 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
                     <button type="button" onClick={() => moveTrack(track.id, 1)} aria-label="Move track down">
                       <ArrowDown size={16} />
                     </button>
-                    <button type="button" onClick={() => removeTrack(track.id)} aria-label={`Remove ${track.originalTrackTitle}`}>
-                      <Trash2 size={16} />
-                    </button>
+                    {!isStoredTrack ? (
+                      <button type="button" onClick={() => removeTrack(track.id)} aria-label={`Remove ${track.originalTrackTitle}`}>
+                        <Trash2 size={16} />
+                      </button>
+                    ) : null}
                   </div>
                 </article>
               );
