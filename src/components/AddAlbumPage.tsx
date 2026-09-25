@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowDown, ArrowUp, GripVertical, Loader2, Plus, Trash2, Upload, UserPlus } from "lucide-react";
-import { upload } from "@vercel/blob/client";
+import { uploadPresigned } from "@vercel/blob/client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
@@ -159,7 +159,7 @@ export function AddAlbumPage() {
         const track = audioTracks[index];
         const albumPath = uploadPathSegment(albumForm.workingAlbumTitle);
         const filePath = uploadPathSegment(track.file.name);
-        const blob = await upload(`album-audio/${albumPath}/${String(index + 1).padStart(2, "0")}-${filePath}`, track.file, {
+        const blob = await uploadPresigned(`album-audio/${albumPath}/${String(index + 1).padStart(2, "0")}-${filePath}`, track.file, {
           access: "public",
           handleUploadUrl: "/api/blob/upload",
           multipart: true,
