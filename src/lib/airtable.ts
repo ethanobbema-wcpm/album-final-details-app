@@ -434,7 +434,7 @@ export async function createAlbum(input: CreateAlbumInput) {
             Catalog: input.catalog || "",
             ...(input.producerRecordId ? { Producer: [input.producerRecordId] } : {}),
             "Box Folder URL": input.boxFolderUrl || "",
-            "Admin Notes": input.adminNotes?.trim() || "",
+            ...(input.adminNotes?.trim() ? { "Admin Notes": input.adminNotes.trim() } : {}),
             Status: statusLabels.assigned,
             "Date Assigned": input.dateAssigned || todayIsoDate(),
             "Private Submission Slug": slugify(input.workingAlbumTitle),
