@@ -402,6 +402,10 @@ label {
   gap: 7px;
 }
 
+.addAlbumExtras .adminNotesField {
+  grid-column: 1 / -1;
+}
+
 .workflowButtonRow,
 .submissionFooter {
   display: flex;
@@ -454,6 +458,10 @@ label {
   margin-bottom: 0;
   font-size: var(--ui-text-size);
   line-height: 1.1;
+}
+
+.adminNotesLine {
+  white-space: pre-wrap;
 }
 
 .inlineTextLink {

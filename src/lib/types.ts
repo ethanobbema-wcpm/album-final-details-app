@@ -99,6 +99,7 @@ export type CreateAlbumInput = {
   producerRecordId?: string;
   producerName?: string;
   boxFolderUrl?: string;
+  adminNotes?: string;
   dateAssigned?: string;
   tracks?: Array<{
     originalTrackTitle: string;

@@ -18,6 +18,7 @@ export function AddAlbumPage() {
     catalog: "",
     producerRecordId: "",
     boxFolderUrl: "",
+    adminNotes: "",
     dateAssigned: todayIsoDate()
   });
   const [producerForm, setProducerForm] = useState({
@@ -174,6 +175,15 @@ export function AddAlbumPage() {
               type="date"
               value={albumForm.dateAssigned}
               onChange={(event) => setAlbumForm((current) => ({ ...current, dateAssigned: event.target.value }))}
+            />
+          </label>
+
+          <label className="adminNotesField">
+            Notes (optional)
+            <textarea
+              value={albumForm.adminNotes}
+              placeholder="Add any instructions or context for the producer."
+              onChange={(event) => setAlbumForm((current) => ({ ...current, adminNotes: event.target.value }))}
             />
           </label>
         </div>
