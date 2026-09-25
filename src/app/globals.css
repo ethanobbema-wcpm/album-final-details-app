@@ -461,6 +461,17 @@ label {
 }
 
 .adminNotesLine {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+}
+
+.adminNotesLine strong {
+  font-weight: 900;
+}
+
+.adminNotesLine span {
   white-space: pre-wrap;
 }
 

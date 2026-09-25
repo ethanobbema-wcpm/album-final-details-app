@@ -767,7 +767,8 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
           ) : null}
           {album.adminNotes?.trim() ? (
             <p className="workingTitleLine adminNotesLine">
-              <strong>Notes:</strong> {album.adminNotes}
+              <strong>Notes:</strong>
+              <span>{album.adminNotes}</span>
             </p>
           ) : null}
         </div>
