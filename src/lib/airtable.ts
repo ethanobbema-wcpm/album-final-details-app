@@ -297,6 +297,11 @@ function finalCatalogFromSubmissions(submissions: SubmissionSummary[]) {
   return "";
 }
 
+function finalAlbumTitleFromSubmissions(submissions: SubmissionSummary[]) {
+  const sortedSubmissions = [...submissions].sort((a, b) => (b.submittedAt || "").localeCompare(a.submittedAt || ""));
+  return sortedSubmissions.find((submission) => submission.submittedFinalAlbumTitle?.trim())?.submittedFinalAlbumTitle?.trim() || "";
+}
+
 function submissionNotesFromSubmissions(submissions: SubmissionSummary[]) {
   const sortedSubmissions = [...submissions].sort((a, b) => (b.submittedAt || "").localeCompare(a.submittedAt || ""));
   for (const submission of sortedSubmissions) {
@@ -322,7 +327,7 @@ function mapAlbum(
     id: firstString(fields, ["Album ID"], record.id),
     airtableId: record.id,
     workingAlbumTitle: firstString(fields, ["Working Album Title"], "Untitled Album"),
-    finalAlbumTitle: firstString(fields, ["Final Album Title"]),
+    finalAlbumTitle: firstString(fields, ["Final Album Title"]) || finalAlbumTitleFromSubmissions(submissions),
     catalog: firstString(fields, ["Catalog"]),
     finalCatalog: firstString(fields, ["Final Catalog"]) || finalCatalogFromSubmissions(submissions),
     producerRecordId,
@@ -334,6 +339,7 @@ function mapAlbum(
     boxFolderUrl: firstString(fields, ["Box Folder URL"]),
     status: normalizeStatus(firstString(fields, ["Status"], statusLabels.assigned)),
     dateAssigned: firstString(fields, ["Date Assigned"]),
+    dueDate: firstString(fields, ["Due Date"]),
     dateSubmitted: firstString(fields, ["Date Submitted"]),
     privateSubmissionSlug: firstString(fields, ["Private Submission Slug"], record.id),
     adminNotes: firstString(fields, ["Admin Notes"]),
@@ -448,6 +454,7 @@ export async function createAlbum(input: CreateAlbumInput) {
       adminNotes: input.adminNotes?.trim() || undefined,
       status: statusLabels.assigned,
       dateAssigned: input.dateAssigned || todayIsoDate(),
+      dueDate: input.dueDate,
       privateSubmissionSlug: slugify(input.workingAlbumTitle),
       tracks: inputTracks.map((track, index) => ({
         id: `mock-trk-${Date.now()}-${index}`,
@@ -484,6 +491,7 @@ export async function createAlbum(input: CreateAlbumInput) {
             ...(input.adminNotes?.trim() ? { "Admin Notes": input.adminNotes.trim() } : {}),
             Status: statusLabels.assigned,
             "Date Assigned": input.dateAssigned || todayIsoDate(),
+            ...(input.dueDate ? { "Due Date": input.dueDate } : {}),
             "Private Submission Slug": slugify(input.workingAlbumTitle),
             "Last Updated": todayIsoDate()
           }

@@ -12,6 +12,17 @@ function statusClass(status: string) {
   return `status-${status.toLowerCase().replace(/\s+/g, "-")}`;
 }
 
+function dueDateReached(dueDate?: string) {
+  if (!dueDate) return false;
+  const today = new Date();
+  const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  return dueDate <= localToday;
+}
+
+function overviewTitle(album: Album) {
+  return album.status === "Completed" && album.finalAlbumTitle?.trim() ? album.finalAlbumTitle : album.workingAlbumTitle;
+}
+
 export function AdminDashboard() {
   const [albums, setAlbums] = useState<Album[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("idle");
@@ -103,13 +114,14 @@ export function AdminDashboard() {
       <section className="albumList" aria-label="Album list">
         {albums.map((album) => {
           const id = album.airtableId || album.id;
+          const albumTitle = overviewTitle(album);
 
           return (
             <article className="listAlbumCard" key={id}>
               <Link className="listAlbumMain" href={`/admin/albums/${encodeURIComponent(id)}`}>
                 <div>
                   <p>
-                    <strong>Album Title:</strong> {album.workingAlbumTitle}
+                    <strong>Album Title:</strong> {albumTitle}
                   </p>
                   <p>
                     <strong>Producer:</strong> {album.producerName || "Unassigned"}
@@ -118,14 +130,19 @@ export function AdminDashboard() {
                   <p>
                     <strong>Assigned Date:</strong> {album.dateAssigned || "Not set"}
                   </p>
+                  {album.dueDate ? (
+                    <p className={dueDateReached(album.dueDate) ? "dueDateReached" : undefined}>
+                      <strong>Due Date:</strong> {album.dueDate}
+                    </p>
+                  ) : null}
                 </div>
                 <span className={`workflowStatus ${statusClass(album.status)}`}>Status: {album.status}</span>
               </Link>
               <div className="listAlbumActions">
-                <button type="button" onClick={() => void copyProducerLink(album)} aria-label={`Copy link for ${album.workingAlbumTitle}`}>
+                <button type="button" onClick={() => void copyProducerLink(album)} aria-label={`Copy link for ${albumTitle}`}>
                   <Clipboard size={28} />
                 </button>
-                <a href={`/api/albums/${encodeURIComponent(id)}/export`} aria-label={`Download ${album.workingAlbumTitle} export`}>
+                <a href={`/api/albums/${encodeURIComponent(id)}/export`} aria-label={`Download ${albumTitle} export`}>
                   <Download size={30} />
                 </a>
                 <button

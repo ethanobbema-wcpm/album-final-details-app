@@ -27,6 +27,7 @@ export function albumToCsv(album: Album) {
     ["Producer", album.producerName || ""],
     ["Producer Email", album.producerEmail || ""],
     ["Status", album.status],
+    ["Due Date", album.dueDate || ""],
     ["Date Submitted", album.dateSubmitted || ""],
     ["Box Folder URL", album.boxFolderUrl || ""],
     ...(album.submissionNotes?.trim() ? [["Notes", album.submissionNotes.trim()]] : []),

@@ -258,6 +258,12 @@ label {
   margin-bottom: 0;
 }
 
+.dueDateReached,
+.dueDateReached strong {
+  color: #c82020;
+  font-weight: 900;
+}
+
 .listAlbumCard strong {
   font-size: var(--ui-text-size);
   line-height: 1;
@@ -392,7 +398,7 @@ label {
 
 .addAlbumExtras {
   display: grid;
-  grid-template-columns: 1fr 180px;
+  grid-template-columns: minmax(0, 1fr) 180px 180px;
   gap: 14px;
   margin-top: 22px;
 }

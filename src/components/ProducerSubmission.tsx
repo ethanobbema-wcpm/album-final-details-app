@@ -77,6 +77,13 @@ function parseDuration(duration?: string) {
   return parts.reduce((seconds, part) => seconds * 60 + part, 0);
 }
 
+function dueDateReached(dueDate?: string) {
+  if (!dueDate) return false;
+  const today = new Date();
+  const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  return dueDate <= localToday;
+}
+
 function savedTracksForAlbum(album: Album) {
   const availableTracks = album.status === "Completed" ? album.tracks : album.tracks.filter((track) => Boolean(track.audioUrl));
   if (!availableTracks.length) return [];
@@ -643,6 +650,11 @@ export function ProducerSubmission({ slug, albumId, backHref }: ProducerSubmissi
           <p className="workingTitleLine">
             <strong>Catalog:</strong> {album.catalog || "Pending"}
           </p>
+          {album.dueDate ? (
+            <p className={`workingTitleLine ${dueDateReached(album.dueDate) ? "dueDateReached" : ""}`}>
+              <strong>Due Date:</strong> {album.dueDate}
+            </p>
+          ) : null}
           {album.boxFolderUrl ? (
             <p className="workingTitleLine">
               <strong>Box Folder URL:</strong>{" "}

@@ -61,6 +61,7 @@ export type Album = {
   boxFolderUrl?: string;
   status: AlbumStatus;
   dateAssigned?: string;
+  dueDate?: string;
   dateSubmitted?: string;
   privateSubmissionSlug: string;
   adminNotes?: string;
@@ -107,6 +108,7 @@ export type CreateAlbumInput = {
   boxFolderUrl?: string;
   adminNotes?: string;
   dateAssigned?: string;
+  dueDate?: string;
   tracks?: Array<{
     originalTrackTitle: string;
     audioFileName?: string;

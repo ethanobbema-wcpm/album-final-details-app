@@ -60,7 +60,8 @@ export function AddAlbumPage() {
     producerRecordId: "",
     boxFolderUrl: "",
     adminNotes: "",
-    dateAssigned: todayIsoDate()
+    dateAssigned: todayIsoDate(),
+    dueDate: ""
   });
   const [producerForm, setProducerForm] = useState({
     name: "",
@@ -315,6 +316,15 @@ export function AddAlbumPage() {
               type="date"
               value={albumForm.dateAssigned}
               onChange={(event) => setAlbumForm((current) => ({ ...current, dateAssigned: event.target.value }))}
+            />
+          </label>
+
+          <label>
+            Due Date (optional)
+            <input
+              type="date"
+              value={albumForm.dueDate}
+              onChange={(event) => setAlbumForm((current) => ({ ...current, dueDate: event.target.value }))}
             />
           </label>
 
